@@ -39,6 +39,8 @@ export default async function Products({
       : []
     : [];
   const discount = searchParams?.["discount"] ?? null;
+  const sortBy = searchParams?.["sortBy"] ?? null;
+
   const { products, lastPage, numOfResultsOnCurPage } = await getProducts(
     +page,
     +pageSize,
@@ -49,6 +51,7 @@ export default async function Products({
       priceRangeTo,
       occasions,
       discount,
+      sortBy,
     }
   );
 

@@ -84,6 +84,16 @@ export async function getProducts(
     }
     // include other filters as needed
 
+     if (filters.sortBy) {
+      const [column, order] = filters.sortBy.split("-");
+      // Validate columns to avoid SQL injection
+      const validColumns = ["price", "created_at", "rating"];
+      const validOrder = ["asc", "desc"];
+
+      if (validColumns.includes(column) && validOrder.includes(order.toLowerCase())) {
+        dbQuery = dbQuery.orderBy(column, order as "asc" | "desc");
+      }
+    }
     const count = await dbQuery
       // .select(sql`COUNT(DISTINCT products.id) as count`)
       .executeTakeFirst();

@@ -24,7 +24,15 @@ function SortBy() {
         id="sorting"
         value={String(searchParams.get("sortBy"))}
         onChange={(e) => {
-          alert("Please update the code.");
+          // Update the searchParams with the new sorting value
+          const newSortBy = e.currentTarget.value;
+          if (newSortBy) {
+            searchParams.set("sortBy", newSortBy);
+          } else {
+            searchParams.delete("sortBy");
+          }
+          // Push the new URL with updated search params, keep scroll position
+          router.push(`/products?${searchParams.toString()}`, { scroll: false });
         }}
       >
         <option value="">None</option>
