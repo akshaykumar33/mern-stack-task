@@ -9,18 +9,89 @@ import { revalidatePath } from "next/cache";
 import { authOptions } from "@/utils/authOptions";
 import { cache } from "react";
 
-export async function getProducts(pageNo = 1, pageSize = DEFAULT_PAGE_SIZE) {
-  try {
-    let products;
-    let dbQuery = db.selectFrom("products").selectAll("products");
+// export async function getProducts(pageNo = 1, pageSize = DEFAULT_PAGE_SIZE) {
+//   try {
+//     let products;
+//     let dbQuery = db.selectFrom("products").selectAll("products");
 
-    const { count } = await dbQuery
+//     const { count } = await dbQuery
+//       // .select(sql`COUNT(DISTINCT products.id) as count`)
+//       .executeTakeFirst();
+
+//     const lastPage = Math.ceil(count / pageSize);
+
+//     products = await dbQuery
+//       .distinct()
+//       .offset((pageNo - 1) * pageSize)
+//       .limit(pageSize)
+//       .execute();
+
+//     const numOfResultsOnCurPage = products.length;
+
+//     return { products, count, lastPage, numOfResultsOnCurPage };
+//   } catch (error) {
+//     throw error;
+//   }
+// }
+export async function getProducts(
+  pageNo = 1,
+  pageSize = DEFAULT_PAGE_SIZE,
+  filters = {}
+) {
+  try {
+    let dbQuery = db.selectFrom("products").selectAll("products");
+    console.log("filters", filters)
+
+    if (filters.brandIds && filters.brandIds.length > 0) {
+      const conditions = filters.brandIds.map(brandId =>
+        sql`FIND_IN_SET(${brandId}, products.brands) > 0`
+      );
+      dbQuery = dbQuery.where(sql`${sql.join(conditions, sql` OR `)}`);
+    }
+
+    if (filters.categoryIds && filters.categoryIds.length > 0) {
+      dbQuery = dbQuery
+        .innerJoin("product_categories", "products.id", "product_categories.product_id")
+        .where("product_categories.category_id", "in", filters.categoryIds);
+    }
+
+    if (filters.gender) {
+      dbQuery = dbQuery.where("gender", "=", filters.gender);
+    }
+
+    if (filters.priceRangeTo) {
+      dbQuery = dbQuery.where("price", "<=", filters.priceRangeTo);
+    }
+
+    if (filters.discount) {
+      const [minDiscountStr, maxDiscountStr] = filters.discount.split('-');
+      const minDiscount = Number(minDiscountStr);
+      const maxDiscount = Number(maxDiscountStr);
+
+      if (!isNaN(minDiscount) && !isNaN(maxDiscount)) {
+        dbQuery = dbQuery.where('products.discount', '>=', minDiscount)
+          .where('products.discount', '<=', maxDiscount);
+      }
+    }
+
+
+    if (filters.occasions && filters.occasions.length > 0) {
+      const conditions = filters.occasions.map((occasion) =>
+        sql`FIND_IN_SET(${occasion}, products.occasion) > 0`
+      );
+
+      dbQuery = dbQuery.where(sql`${sql.join(conditions, sql` OR `)}`);
+    }
+    // include other filters as needed
+
+    const count = await dbQuery
       // .select(sql`COUNT(DISTINCT products.id) as count`)
       .executeTakeFirst();
 
-    const lastPage = Math.ceil(count / pageSize);
+    const totalCount = Number(count?.count ?? 0);
+    const lastPage = Math.ceil(totalCount / pageSize);
 
-    products = await dbQuery
+    const products = await dbQuery
       .distinct()
       .offset((pageNo - 1) * pageSize)
       .limit(pageSize)
@@ -28,7 +99,7 @@ export async function getProducts(pageNo = 1, pageSize = DEFAULT_PAGE_SIZE) {
 
     const numOfResultsOnCurPage = products.length;
 
-    return { products, count, lastPage, numOfResultsOnCurPage };
+    return { products, count: totalCount, lastPage, numOfResultsOnCurPage };
   } catch (error) {
     throw error;
   }

@@ -125,28 +125,80 @@ function Filter({ categories, brands }) {
     }
   }, [sliderValue]);
 
-  function handleBrandsSelect(e) {
-    alert("Please update the code.");
+  function handleBrandsSelect(selected) {
+    const values = selected.map((option) => option.value);
+    if (values.length > 0) {
+      searchParams.set("brandId", values.join(","));
+    } else {
+      searchParams.delete("brandId");
+    }
+    searchParams.delete("page");
+    searchParams.delete("pageSize");
+    router.push(`/products?${searchParams.toString()}`);
   }
 
-  function handleCategoriesSelected(e) {
-    alert("Please update the code.");
+  function handleCategoriesSelected(selected) {
+    console.log("categories",selected)
+    const values = selected.map((option) => option.value);
+
+    if (values.length > 0) {
+      searchParams.set("categoryId", values.join(","));
+    } else {
+      searchParams.delete("categoryId");
+    }
+    setCategoriesSelected(
+      selected.map((category) => {
+        return {
+          value: +category.value,
+          label: category.label,
+        };
+      })
+    );
+
+    searchParams.delete("page");
+    searchParams.delete("pageSize");
+    router.push(`/products?${searchParams.toString()}`);
   }
 
   function handleSlider(e) {
-    alert("Please update the code.");
+    setSliderValue(e.target.value);
+    setSliderChanged(true);
   }
 
   const handleGenderChange = (e) => {
-    alert("Please update the code.");
+    const value = e.target.value;
+    setSelectedGender(value);
+    if (value) {
+      searchParams.set("gender", value);
+    } else {
+      searchParams.delete("gender");
+    }
+    searchParams.delete("page");
+    searchParams.delete("pageSize");
+    router.push(`/products?${searchParams.toString()}`, { scroll: false });
   };
 
   function handleOccasions(e) {
-    alert("Please update the code.");
+    const values = e.map((option) => option.value);
+    if (values.length > 0) {
+      searchParams.set("occasions", values.join(","));
+    } else {
+      searchParams.delete("occasions");
+    }
+    searchParams.delete("page");
+    searchParams.delete("pageSize");
+    router.push(`/products?${searchParams.toString()}`, { scroll: false });
   }
 
   function handleDiscount(e) {
-    alert("Please update the code.");
+    if (e.value) {
+      searchParams.set("discount", e.value);
+    } else {
+      searchParams.delete("discount");
+    }
+    searchParams.delete("page");
+    searchParams.delete("pageSize");
+    router.push(`/products?${searchParams.toString()}`, { scroll: false });
   }
 
   // function handleClearAll() {
