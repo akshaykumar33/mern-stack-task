@@ -9,99 +9,92 @@ import { revalidatePath } from "next/cache";
 import { authOptions } from "@/utils/authOptions";
 import { cache } from "react";
 
-// export async function getProducts(pageNo = 1, pageSize = DEFAULT_PAGE_SIZE) {
-//   try {
-//     let products;
-//     let dbQuery = db.selectFrom("products").selectAll("products");
 
-//     const { count } = await dbQuery
-//       // .select(sql`COUNT(DISTINCT products.id) as count`)
-//       .executeTakeFirst();
-
-//     const lastPage = Math.ceil(count / pageSize);
-
-//     products = await dbQuery
-//       .distinct()
-//       .offset((pageNo - 1) * pageSize)
-//       .limit(pageSize)
-//       .execute();
-
-//     const numOfResultsOnCurPage = products.length;
-
-//     return { products, count, lastPage, numOfResultsOnCurPage };
-//   } catch (error) {
-//     throw error;
-//   }
-// }
 export async function getProducts(
   pageNo = 1,
   pageSize = DEFAULT_PAGE_SIZE,
-  filters = {}
+  filters: {
+    brandIds?: number[];
+    categoryIds?: number[];
+    gender?: string;
+    priceRangeTo?: number;
+    discount?: string;
+    occasions?: string[];
+    sortBy?: string;
+  } = {}
 ) {
   try {
-    let dbQuery = db.selectFrom("products").selectAll("products");
-    console.log("filters", filters)
+    // Base query for products selecting all columns
+    let baseQuery = db.selectFrom("products").selectAll("products");
 
+    // Brand filter: products.brands stores comma-separated brand IDs
     if (filters.brandIds && filters.brandIds.length > 0) {
-      const conditions = filters.brandIds.map(brandId =>
+      const brandConditions = filters.brandIds.map((brandId) =>
         sql`FIND_IN_SET(${brandId}, products.brands) > 0`
       );
-      dbQuery = dbQuery.where(sql`${sql.join(conditions, sql` OR `)}`);
+      baseQuery = baseQuery.where(sql`${sql.join(brandConditions, sql` OR `)}`);
     }
 
+    // Category filter with a left join to include all products even without categories if no filter
     if (filters.categoryIds && filters.categoryIds.length > 0) {
-      dbQuery = dbQuery
-        .innerJoin("product_categories", "products.id", "product_categories.product_id")
+      baseQuery = baseQuery
+        .leftJoin("product_categories", "products.id", "product_categories.product_id")
         .where("product_categories.category_id", "in", filters.categoryIds);
     }
 
+    // Gender filter
     if (filters.gender) {
-      dbQuery = dbQuery.where("gender", "=", filters.gender);
+      baseQuery = baseQuery.where("products.gender", "=", filters.gender);
     }
 
+    // Price upper limit filter
     if (filters.priceRangeTo) {
-      dbQuery = dbQuery.where("price", "<=", filters.priceRangeTo);
+      baseQuery = baseQuery.where("products.price", "<=", filters.priceRangeTo);
     }
 
+    // Discount range filter, discount string like "6-10"
     if (filters.discount) {
-      const [minDiscountStr, maxDiscountStr] = filters.discount.split('-');
+      const [minDiscountStr, maxDiscountStr] = filters.discount.split("-");
       const minDiscount = Number(minDiscountStr);
       const maxDiscount = Number(maxDiscountStr);
 
       if (!isNaN(minDiscount) && !isNaN(maxDiscount)) {
-        dbQuery = dbQuery.where('products.discount', '>=', minDiscount)
-          .where('products.discount', '<=', maxDiscount);
+        baseQuery = baseQuery
+          .where("products.discount", ">=", minDiscount)
+          .where("products.discount", "<=", maxDiscount);
       }
     }
 
-
+    // Occasions filter: comma separated in products.occasion string
     if (filters.occasions && filters.occasions.length > 0) {
-      const conditions = filters.occasions.map((occasion) =>
+      const occasionConditions = filters.occasions.map((occasion) =>
         sql`FIND_IN_SET(${occasion}, products.occasion) > 0`
       );
-
-      dbQuery = dbQuery.where(sql`${sql.join(conditions, sql` OR `)}`);
+      baseQuery = baseQuery.where(sql`${sql.join(occasionConditions, sql` OR `)}`);
     }
-    // include other filters as needed
 
-     if (filters.sortBy) {
+    // Sorting
+    if (filters.sortBy) {
       const [column, order] = filters.sortBy.split("-");
-      // Validate columns to avoid SQL injection
       const validColumns = ["price", "created_at", "rating"];
-      const validOrder = ["asc", "desc"];
+      const validOrders = ["asc", "desc"];
 
-      if (validColumns.includes(column) && validOrder.includes(order.toLowerCase())) {
-        dbQuery = dbQuery.orderBy(column, order as "asc" | "desc");
+      if (validColumns.includes(column) && validOrders.includes(order)) {
+        baseQuery = baseQuery.orderBy(column, order as "asc" | "desc");
       }
     }
-    const count = await dbQuery
-      // .select(sql`COUNT(DISTINCT products.id) as count`)
+
+    // Count total products matching filters (no pagination)
+    const countResult = await db
+      .selectFrom(baseQuery.as("filtered"))
+      .select(sql`COUNT(DISTINCT filtered.id)`.as("count"))
       .executeTakeFirst();
 
-    const totalCount = Number(count?.count ?? 0);
+    const totalCount = Number(countResult?.count ?? 0);
     const lastPage = Math.ceil(totalCount / pageSize);
 
-    const products = await dbQuery
+    // Query paginated products with distinct to avoid duplicates due to join
+    const products = await baseQuery
       .distinct()
       .offset((pageNo - 1) * pageSize)
       .limit(pageSize)
@@ -114,6 +107,7 @@ export async function getProducts(
     throw error;
   }
 }
+
 
 export const getProduct = cache(async function getProduct(productId: number) {
   // console.log("run");

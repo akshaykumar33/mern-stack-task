@@ -12,16 +12,28 @@ function PaginationSection({
   pageSize: number;
 }) {
   const router = useRouter();
-
   const query = useSearchParams();
   const searchParams = new URLSearchParams(query);
 
   function handlePrev() {
-    alert("Please update the code.");
+    if (pageNo > 1) {
+      searchParams.set("page", String(pageNo - 1));
+      router.push(`/products?${searchParams.toString()}`, { scroll: false });
+    }
   }
 
   function handleNext() {
-    alert("Please update the code.");
+    if (pageNo < lastPage) {
+      searchParams.set("page", String(pageNo + 1));
+      router.push(`/products?${searchParams.toString()}`, { scroll: false });
+    }
+  }
+
+  function handlePageSizeChange(e: React.ChangeEvent<HTMLSelectElement>) {
+    searchParams.set("pageSize", e.target.value);
+    // Reset to first page when changing page size
+    searchParams.set("page", "1");
+    router.push(`/products?${searchParams.toString()}`, { scroll: false });
   }
 
   return (
@@ -30,17 +42,13 @@ function PaginationSection({
         value={pageSize}
         name="page-size"
         className="text-black"
-        onChange={(e) => {
-          alert("Please update the code.");
-        }}
+        onChange={handlePageSizeChange}
       >
-        {["10", "25", "50"].map((val) => {
-          return (
-            <option key={val} value={val}>
-              {val}
-            </option>
-          );
-        })}
+        {["10", "25", "50"].map((val) => (
+          <option key={val} value={val}>
+            {val}
+          </option>
+        ))}
       </select>
       <button
         className="p-3 bg-slate-300 text-black disabled:cursor-not-allowed"
