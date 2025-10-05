@@ -4,11 +4,11 @@ The task involves developing a web application that allows users to browse throu
 
 ## Github Repo:
 
-https://github.com/enacton-tech/mern-stack-task
+https://github.com/akshaykumar33/mern-stack-task
 
 ### Video Explanation
 
-https://app.usebubbles.com/kG9NjR5kqBCssXm1yA5dZt/mernstack-interview-task-walkthrough
+https://app.usebubbles.com/b5mQ3GxzdKheDiifKzsK15/enacton-mern-stack-akshaykumar-patil
 
 ### Setting Up the Project
 
