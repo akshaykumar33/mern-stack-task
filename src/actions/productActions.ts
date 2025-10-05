@@ -18,17 +18,16 @@ export async function getProducts(
   try {
     let baseQuery = db.selectFrom("products").selectAll("products");
 
-    // Brand (comma-separated in DB but stored as JSON string if your code elsewhere expects it)
+    // Brand filter: properly group OR conditions with parentheses
     if (filters.brandIds && filters.brandIds.length > 0) {
       const brandConditions = filters.brandIds.map(brandId =>
         sql`JSON_CONTAINS(products.brands, ${String(brandId)}, '$')`
       );
-      baseQuery = baseQuery.where(sql`${sql.join(brandConditions, sql` OR `)}`);
-
-
+      // Wrap brandConditions in parentheses to avoid precedence issues
+      baseQuery = baseQuery.where(sql`(${sql.join(brandConditions, sql` OR `)})`);
     }
 
-    // Category (join on mapping table)
+    // Category filter with inner join and IN clause
     if (filters.categoryIds && filters.categoryIds.length > 0) {
       baseQuery = baseQuery
         .innerJoin(
@@ -36,28 +35,20 @@ export async function getProducts(
           "products.id",
           "product_categories.product_id"
         )
-      if (filters.categoryIds.length === 1) {
-        baseQuery = baseQuery.where("product_categories.category_id", "=", filters.categoryIds[0]);
-      } else if (filters.categoryIds.length > 1) {
-        baseQuery = baseQuery.where("product_categories.category_id", "in", filters.categoryIds);
-      }
+        .where("product_categories.category_id", "in", filters.categoryIds);
     }
 
-    // Gender
+    // Gender filter
     if (filters.gender) {
       baseQuery = baseQuery.where("products.gender", "=", filters.gender);
     }
 
-    // Price
+    // Price upper limit filter
     if (filters.priceRangeTo) {
-      baseQuery = baseQuery.where(
-        "products.price",
-        "<=",
-        filters.priceRangeTo
-      );
+      baseQuery = baseQuery.where("products.price", "<=", filters.priceRangeTo);
     }
 
-    // Discount range
+    // Discount range filter, discount string like "6-10"
     if (filters.discount) {
       const [minDiscountStr, maxDiscountStr] = filters.discount.split("-");
       const minDiscount = Number(minDiscountStr);
@@ -69,10 +60,10 @@ export async function getProducts(
       }
     }
 
-    // Occasions (comma-separated in DB)
+    // Occasions filter: comma separated in products.occasion string
     if (filters.occasions && filters.occasions.length > 0) {
-      const occasionConditions = filters.occasions.map(
-        (occasion) => sql`FIND_IN_SET(${occasion}, products.occasion) > 0`
+      const occasionConditions = filters.occasions.map(occasion =>
+        sql`FIND_IN_SET(${occasion}, products.occasion) > 0`
       );
       baseQuery = baseQuery.where(sql`${sql.join(occasionConditions, sql` OR `)}`);
     }
@@ -88,7 +79,6 @@ export async function getProducts(
     }
 
     // Get total count for pagination (clone main query, remove limit/offset)
-    // Use COUNT(DISTINCT) due to possible join
     const countResult = await db
       .selectFrom(baseQuery.as("filtered"))
       .select(sql`COUNT(DISTINCT filtered.id)`.as("count"))
@@ -97,14 +87,14 @@ export async function getProducts(
     const totalCount = Number(countResult?.count ?? 0);
     const lastPage = Math.ceil(totalCount / pageSize);
 
-    // Main query with pagination
+    // Query paginated products with distinct to avoid duplicates due to join
     const products = await baseQuery
       .distinct()
       .offset((pageNo - 1) * pageSize)
       .limit(pageSize)
       .execute();
 
-    // console.log("filters", filters)
+    // console.log("filters", filters);
     // console.log(baseQuery.compile().sql);
 
     const numOfResultsOnCurPage = products.length;
@@ -114,7 +104,6 @@ export async function getProducts(
     throw error;
   }
 }
-
 
 
 export const getProduct = cache(async function getProduct(productId: number) {
@@ -279,7 +268,7 @@ export async function editProduct(productId: number, value: any) {
       if (inserts.length > 0) {
         await db.insertInto("product_categories").values(inserts).execute();
       }
-        // console.log("value.categories",value.categories)
+      // console.log("value.categories",value.categories)
     }
 
     revalidatePath("/products");
