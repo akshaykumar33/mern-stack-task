@@ -14,7 +14,7 @@ export default async function Products({
   searchParams?: { [key: string]: string | string[] | undefined };
 }) {
   const { page = 1, pageSize = DEFAULT_PAGE_SIZE } = searchParams as any;
-  console.log("searchParams",searchParams);
+  // console.log("searchParams",searchParams);
   const brandIds = searchParams?.["brandId"]
     ? typeof searchParams["brandId"] === "string"
       ? searchParams["brandId"].split(",").map((id) => Number(id))
