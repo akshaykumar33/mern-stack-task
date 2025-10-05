@@ -138,7 +138,7 @@ function Filter({ categories, brands }) {
   }
 
   function handleCategoriesSelected(selected) {
-    console.log("categories",selected)
+    // console.log("categories",selected)
     const values = selected.map((option) => option.value);
 
     if (values.length > 0) {

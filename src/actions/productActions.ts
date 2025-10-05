@@ -11,53 +11,53 @@ import { cache } from "react";
 
 
 export async function getProducts(
-  pageNo = 1,
-  pageSize = DEFAULT_PAGE_SIZE,
-  filters: {
-    brandIds?: number[];
-    categoryIds?: number[];
-    gender?: string;
-    priceRangeTo?: number;
-    discount?: string;
-    occasions?: string[];
-    sortBy?: string;
-  } = {}
+  pageNo: number = 1,
+  pageSize: number = DEFAULT_PAGE_SIZE,
+  filters = {}
 ) {
   try {
-    // Base query for products selecting all columns
     let baseQuery = db.selectFrom("products").selectAll("products");
 
-    // Brand filter: products.brands stores comma-separated brand IDs
+    // Brand (comma-separated in DB but stored as JSON string if your code elsewhere expects it)
     if (filters.brandIds && filters.brandIds.length > 0) {
-      const brandConditions = filters.brandIds.map((brandId) =>
-        sql`FIND_IN_SET(${brandId}, products.brands) > 0`
-      );
-      baseQuery = baseQuery.where(sql`${sql.join(brandConditions, sql` OR `)}`);
+      if (filters.categoryIds.length === 1) {
+        baseQuery = baseQuery.where("product_categories.category_id", "=", filters.categoryIds[0]);
+      } else if (filters.categoryIds.length > 1) {
+        baseQuery = baseQuery.where("product_categories.category_id", "in", filters.categoryIds);
+      }
+
     }
 
-    // Category filter with a left join to include all products even without categories if no filter
+    // Category (join on mapping table)
     if (filters.categoryIds && filters.categoryIds.length > 0) {
       baseQuery = baseQuery
-        .leftJoin("product_categories", "products.id", "product_categories.product_id")
+        .innerJoin(
+          "product_categories",
+          "products.id",
+          "product_categories.product_id"
+        )
         .where("product_categories.category_id", "in", filters.categoryIds);
     }
 
-    // Gender filter
+    // Gender
     if (filters.gender) {
       baseQuery = baseQuery.where("products.gender", "=", filters.gender);
     }
 
-    // Price upper limit filter
+    // Price
     if (filters.priceRangeTo) {
-      baseQuery = baseQuery.where("products.price", "<=", filters.priceRangeTo);
+      baseQuery = baseQuery.where(
+        "products.price",
+        "<=",
+        filters.priceRangeTo
+      );
     }
 
-    // Discount range filter, discount string like "6-10"
+    // Discount range
     if (filters.discount) {
       const [minDiscountStr, maxDiscountStr] = filters.discount.split("-");
       const minDiscount = Number(minDiscountStr);
       const maxDiscount = Number(maxDiscountStr);
-
       if (!isNaN(minDiscount) && !isNaN(maxDiscount)) {
         baseQuery = baseQuery
           .where("products.discount", ">=", minDiscount)
@@ -65,10 +65,10 @@ export async function getProducts(
       }
     }
 
-    // Occasions filter: comma separated in products.occasion string
+    // Occasions (comma-separated in DB)
     if (filters.occasions && filters.occasions.length > 0) {
-      const occasionConditions = filters.occasions.map((occasion) =>
-        sql`FIND_IN_SET(${occasion}, products.occasion) > 0`
+      const occasionConditions = filters.occasions.map(
+        (occasion) => sql`FIND_IN_SET(${occasion}, products.occasion) > 0`
       );
       baseQuery = baseQuery.where(sql`${sql.join(occasionConditions, sql` OR `)}`);
     }
@@ -78,13 +78,13 @@ export async function getProducts(
       const [column, order] = filters.sortBy.split("-");
       const validColumns = ["price", "created_at", "rating"];
       const validOrders = ["asc", "desc"];
-
       if (validColumns.includes(column) && validOrders.includes(order)) {
-        baseQuery = baseQuery.orderBy(column, order as "asc" | "desc");
+        baseQuery = baseQuery.orderBy(`products.${column}`, order as "asc" | "desc");
       }
     }
 
-    // Count total products matching filters (no pagination)
+    // Get total count for pagination (clone main query, remove limit/offset)
+    // Use COUNT(DISTINCT) due to possible join
     const countResult = await db
       .selectFrom(baseQuery.as("filtered"))
       .select(sql`COUNT(DISTINCT filtered.id)`.as("count"))
@@ -93,12 +93,15 @@ export async function getProducts(
     const totalCount = Number(countResult?.count ?? 0);
     const lastPage = Math.ceil(totalCount / pageSize);
 
-    // Query paginated products with distinct to avoid duplicates due to join
+    // Main query with pagination
     const products = await baseQuery
       .distinct()
       .offset((pageNo - 1) * pageSize)
       .limit(pageSize)
       .execute();
+
+    // console.log("filters", filters)
+    // console.log(baseQuery.compile().sql);
 
     const numOfResultsOnCurPage = products.length;
 
@@ -107,6 +110,7 @@ export async function getProducts(
     throw error;
   }
 }
+
 
 
 export const getProduct = cache(async function getProduct(productId: number) {
@@ -220,3 +224,122 @@ export async function getProductCategories(productId: number) {
     throw error;
   }
 }
+
+export async function editProduct(productId: number, value: any) {
+  try {
+    const updateData: any = {};
+
+    if (value.name) updateData.name = value.name;
+    if (value.description) updateData.description = value.description;
+    if (value.brands && Array.isArray(value.brands)) {
+      updateData.brands = JSON.stringify(value.brands.map((brand) => brand.value));
+    }
+    if (value.colors) updateData.colors = value.colors;
+    if (value.occasion && Array.isArray(value.occasion)) {
+      updateData.occasion = value.occasion.map((ocassion) => ocassion.value).join(",");
+    }
+    if (value.gender) updateData.gender = value.gender;
+
+    updateData.discount = Number(value.discount.toString());
+    updateData.old_price = Number(value.old_price.toString());
+    updateData.price = Number(value.price.toString());
+    updateData.rating = Number(value.rating.toString());
+
+    if (value.image_url) updateData.image_url = value.image_url;
+
+    // console.log("updateData", updateData);
+
+    await db
+      .updateTable("products")
+      .set(updateData)
+      .where("products.id", "=", productId)
+      .execute();
+
+
+    // Now handle categories
+    if (value.categories && Array.isArray(value.categories)) {
+      const categoryIdsArr = value.categories.map((category) => category.value)
+
+      // delete existing
+      await db
+        .deleteFrom("product_categories")
+        .where("product_id", "=", productId)
+        .execute();
+
+      // insert new
+      const inserts = categoryIdsArr.map((categoryId) => ({
+        product_id: productId,
+        category_id: categoryId,
+      }));
+
+      if (inserts.length > 0) {
+        await db.insertInto("product_categories").values(inserts).execute();
+      }
+      //  console.log("value.categories",value.categories)
+    }
+
+    revalidatePath("/products");
+
+    return { message: "success" };
+  } catch (err: any) {
+    return { error: err.message };
+  }
+}
+
+export async function addProduct(value: any) {
+  try {
+    const insertData: any = {};
+    // console.log("value--> addProduct before",value);
+    if (value.name) insertData.name = value.name;
+    if (value.description) insertData.description = value.description;
+    if (value.brands && Array.isArray(value.brands)) {
+      insertData.brands = JSON.stringify(value.brands.map((brand) => brand.value));
+    }
+    if (value.colors) insertData.colors = value.colors;
+    if (value.occasion && Array.isArray(value.occasion)) {
+      insertData.occasion = value.occasion.map((ocassion) => ocassion.value).join(",");
+    }
+    if (value.gender) insertData.gender = value.gender;
+
+    insertData.discount = Number(value.discount.toString())
+    insertData.old_price = Number(value.old_price.toString());
+    insertData.price = Number(value.old_price.toString());
+    insertData.rating = Number(value.rating.toString());
+
+    if (value.image_url) insertData.image_url = value.image_url;
+
+    // console.log("insertData",insertData)
+    // Insert into products table and get inserted product id
+    const insertResult = await db
+      .insertInto("products")
+      .values(insertData)
+      .execute();
+
+    // console.log("insertResult",insertResult)
+    const productId = insertResult[0]?.insertId;
+    if (!productId) {
+      throw new Error("Failed to insert product");
+    }
+    console.log("value.categories", value.categories)
+    // Insert category mappings if categories provided
+    if (value.categories && Array.isArray(value.categories)) {
+      const categoryIdsArr = value.categories.map((category) => category.value);
+
+      const inserts = categoryIdsArr.map((categoryId) => ({
+        product_id: productId,
+        category_id: categoryId,
+      }));
+
+      if (inserts.length > 0) {
+        await db.insertInto("product_categories").values(inserts).execute();
+      }
+    }
+
+    revalidatePath("/products");
+
+    return { message: "success" };
+  } catch (err: any) {
+    return { error: err.message };
+  }
+}
+

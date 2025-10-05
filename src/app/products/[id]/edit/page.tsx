@@ -19,6 +19,7 @@ import { occasionOptions } from "../../../../../constant";
 import { notFound, useRouter } from "next/navigation";
 import { UpdateProducts } from "@/types";
 import { toast } from "react-toastify";
+import { editProduct } from "@/actions/productActions";
 
 function EditProduct({ params }: { params: { id: string } }) {
   const { id } = params;
@@ -61,7 +62,11 @@ function EditProduct({ params }: { params: { id: string } }) {
     validationSchema: basicSchema,
 
     onSubmit: async (values, actions) => {
-      alert("Please update the code.");
+      // console.log(id,values)
+      const msg = await editProduct(id,values)
+      // console.log(msg)
+      if(msg.message == 'success')
+        router.push('/products')
     },
   });
 
