@@ -62,9 +62,9 @@ function EditProduct({ params }: { params: { id: string } }) {
     validationSchema: basicSchema,
 
     onSubmit: async (values, actions) => {
-      // console.log(id,values)
+      //  console.log(id,values)
       const msg = await editProduct(id,values)
-      // console.log(msg)
+      //  console.log(msg)
       if(msg.message == 'success')
         router.push('/products')
     },

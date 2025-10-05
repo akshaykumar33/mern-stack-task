@@ -20,11 +20,11 @@ export async function getProducts(
 
     // Brand (comma-separated in DB but stored as JSON string if your code elsewhere expects it)
     if (filters.brandIds && filters.brandIds.length > 0) {
-      if (filters.categoryIds.length === 1) {
-        baseQuery = baseQuery.where("product_categories.category_id", "=", filters.categoryIds[0]);
-      } else if (filters.categoryIds.length > 1) {
-        baseQuery = baseQuery.where("product_categories.category_id", "in", filters.categoryIds);
-      }
+      const brandConditions = filters.brandIds.map(brandId =>
+        sql`JSON_CONTAINS(products.brands, ${String(brandId)}, '$')`
+      );
+      baseQuery = baseQuery.where(sql`${sql.join(brandConditions, sql` OR `)}`);
+
 
     }
 
@@ -36,7 +36,11 @@ export async function getProducts(
           "products.id",
           "product_categories.product_id"
         )
-        .where("product_categories.category_id", "in", filters.categoryIds);
+      if (filters.categoryIds.length === 1) {
+        baseQuery = baseQuery.where("product_categories.category_id", "=", filters.categoryIds[0]);
+      } else if (filters.categoryIds.length > 1) {
+        baseQuery = baseQuery.where("product_categories.category_id", "in", filters.categoryIds);
+      }
     }
 
     // Gender
@@ -242,12 +246,12 @@ export async function editProduct(productId: number, value: any) {
 
     updateData.discount = Number(value.discount.toString());
     updateData.old_price = Number(value.old_price.toString());
-    updateData.price = Number(value.price.toString());
+    updateData.price = Number(value.old_price.toString());
     updateData.rating = Number(value.rating.toString());
 
     if (value.image_url) updateData.image_url = value.image_url;
 
-    // console.log("updateData", updateData);
+    //  console.log("updateData", updateData);
 
     await db
       .updateTable("products")
@@ -275,7 +279,7 @@ export async function editProduct(productId: number, value: any) {
       if (inserts.length > 0) {
         await db.insertInto("product_categories").values(inserts).execute();
       }
-      //  console.log("value.categories",value.categories)
+        // console.log("value.categories",value.categories)
     }
 
     revalidatePath("/products");
@@ -320,7 +324,7 @@ export async function addProduct(value: any) {
     if (!productId) {
       throw new Error("Failed to insert product");
     }
-    console.log("value.categories", value.categories)
+    // console.log("value.categories", value.categories)
     // Insert category mappings if categories provided
     if (value.categories && Array.isArray(value.categories)) {
       const categoryIdsArr = value.categories.map((category) => category.value);
